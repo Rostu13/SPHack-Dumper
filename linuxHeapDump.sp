@@ -1,5 +1,13 @@
 #include <MemoryEx/Stocks>
 
+public Plugin myinfo =
+{
+    name = "[SPHack] Dumper",
+    author = "Rostu [vk.com/rostu13 | Rostu#7917]",
+    version = "1.0",
+    url = "http://vk.com/rostu13"
+};
+
 static const char g_sSMXMagic[] = "FFPS";
 static const char outPutDir[] = "/memoryDump";
 
