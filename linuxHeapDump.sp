@@ -11,6 +11,10 @@ public Plugin myinfo =
 static const char g_sSMXMagic[] = "FFPS";
 static const char outPutDir[] = "/memoryDump";
 
+static const float g_fTimerDelay = 0.2;
+
+ArrayList g_hHeapList;
+
 enum struct HeapInfo // very bad.  same as in DynamicLibrary.
 {
     Address base;
@@ -73,6 +77,8 @@ enum struct VM_SMXHeader
 }
 public void OnPluginStart()
 {
+    g_hHeapList = new ArrayList(sizeof(HeapInfo));
+
     RegServerCmd("sm_dump_smx", Cmd_Dump_Smx);
     RegServerCmd("sm_dump_heaps", Cmd_Dump_Heaps);
 }
@@ -93,11 +99,11 @@ public Action Cmd_Dump_Heaps(int iArgs)
     int iSize;
     int iCurrentSize;
 
-    static const int iMaxHeapSize = 0x1C9C380;
+    static const int iMaxHeapSize = 0x1312D00; // 20 MB
 
     PrintToServer("Heaps count: %d", heaps.Length);
 
-    ArrayList heapsRegion = new ArrayList(sizeof(HeapInfo));
+    g_hHeapList.Clear();
     HeapInfo memTemp;
 
     for(int x = 0; x < heaps.Length; x++)
@@ -107,7 +113,7 @@ public Action Cmd_Dump_Heaps(int iArgs)
 
         PrintToServer("Dump Heaps: Start: 0x%X | End: 0x%X | Size: 0x%X", memInfo.base, memInfo.end, memInfo.GetSize());
 
-        if(iSize >= iMaxHeapSize) // 30 MB
+        if(iSize >= iMaxHeapSize)
         {
             offsetSize = Address_Null;
 
@@ -120,7 +126,7 @@ public Action Cmd_Dump_Heaps(int iArgs)
                 memTemp.base = memInfo.base + offsetSize;
                 memTemp.end = memInfo.base + offsetSize + view_as<Address>(iCurrentSize);
 
-                heapsRegion.PushArray(memTemp, sizeof(HeapInfo));
+                g_hHeapList.PushArray(memTemp, sizeof(HeapInfo));
 
                 offsetSize += view_as<Address>(iCurrentSize);
                 iSize -= iCurrentSize;
@@ -128,28 +134,27 @@ public Action Cmd_Dump_Heaps(int iArgs)
         }
         else
         {
-            CreateHeapMemoryDump(heapsRegion, memInfo.base, iSize);
+            g_hHeapList.PushArray(memInfo, sizeof(HeapInfo));
         }
     }
 
-    HeapDumpFrame_(null, heapsRegion);
+    CreateTimer(g_fTimerDelay, HeapDumpFrame_, _, TIMER_FLAG_NO_MAPCHANGE);
 }
-public Action HeapDumpFrame_(Handle hTimer, ArrayList heaps)
+public Action HeapDumpFrame_(Handle hTimer, any data)
 {
 
     HeapInfo heap;
 
-    if(heaps.Length)
+    if(g_hHeapList.Length)
     {
-        heaps.GetArray(0, heap, sizeof(HeapInfo));
-        heaps.Erase(0);
+        g_hHeapList.GetArray(0, heap, sizeof(HeapInfo));
+        g_hHeapList.Erase(0);
 
-        CreateHeapMemoryDump(heaps, heap.base, heap.GetSize());
+        CreateHeapMemoryDump(heap.base, heap.GetSize());
     }
     else
     {
         PrintToServer("----------End Dump Heaps from Memory----------");
-        delete heaps
     }
 }
 void DumpPlugins()
@@ -168,7 +173,7 @@ void DumpPlugins()
         CreateMemoryDump(sName, smx.addr, smx.size);
     }
 }
-void CreateHeapMemoryDump(ArrayList heaps, Address pBase, any iSize)
+void CreateHeapMemoryDump(Address pBase, any iSize)
 {
     char sNewPath[PLATFORM_MAX_PATH];
 
@@ -238,8 +243,8 @@ void CreateHeapMemoryDump(ArrayList heaps, Address pBase, any iSize)
 
     delete outPut;
 
-    PrintToServer("CreateHeapMemoryDump: %X-%X - complete %d...", pBase - view_as<Address>(iSize), end, heaps.Length);
-    CreateTimer(1.0, HeapDumpFrame_, heaps, TIMER_FLAG_NO_MAPCHANGE)
+    PrintToServer("CreateHeapMemoryDump: %X-%X - complete %d...", pBase - view_as<Address>(iSize), end, g_hHeapList.Length);
+    CreateTimer(g_fTimerDelay, HeapDumpFrame_, _, TIMER_FLAG_NO_MAPCHANGE);
 }
 void CreateMemoryDump(const char[] sFileName, Address pBase, any iSize)
 {
